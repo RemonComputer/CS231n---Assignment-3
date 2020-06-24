@@ -141,7 +141,36 @@ class CaptioningRNN(object):
         # in your implementation, if needed.                                       #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        imageW = np.dot (features,W_proj )+ b_proj
+        
+        caption,cache_caption= word_embedding_forward(captions_in,W_embed)
+                
+        if self.cell_type == 'rnn':
+            h,cache_h = rnn_forward(caption,imageW,Wx,Wh,b)
+        elif self.cell_type == 'lstm':
+            h,cache_h = lstm_forward(caption,imageW,Wx,Wh,b)
 
+            
+        h_affined,cache_affined = temporal_affine_forward(h,W_vocab,b_vocab)
+        loss, dout = temporal_softmax_loss(h_affined, captions_out, mask)
+        dh_affined,dw_vocal,db_vocab = temporal_affine_backward(dout,cache_affined)
+        
+        
+        if self.cell_type == 'rnn':
+            dcaption_in,dh0,dWx,dWh,db = rnn_backward(dh_affined,cache_h)
+        elif self.cell_type == 'lstm':
+            dcaption_in,dh0,dWx,dWh,db = lstm_backward(dh_affined,cache_h)
+            
+        dW_embed = word_embedding_backward(dcaption_in,cache_caption)
+        # as in params
+        grads['W_vocab'] = dw_vocal
+        grads['b_vocab'] = db_vocab
+        grads['Wx'] = dWx
+        grads['Wh'] = dWh
+        grads['b'] = db
+        grads['W_proj'] = np.dot(features .T,dh0)
+        grads['b_proj'] = np.sum(dh0,axis=0)
+        grads['W_embed'] = dW_embed
         pass
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
@@ -210,7 +239,38 @@ class CaptioningRNN(object):
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
+        
+        
+        H = b_proj.shape[0]
+        D = Wx.shape[0]
+        
+        # intial state
+        h = np.dot(features, W_proj) + b_proj
+        
+        # The first element of captions should be  the <START> token
+        captions[:,0] = self._start
+        
+        if self.cell_type == 'lstm':  
+#       LSTM, initialize the first cell state to zeros
+            cell = np.zeros([N,H])
+    
+        for i in range(max_length):
+            
+            caption_embed, cache = word_embedding_forward(captions[:,i].reshape(-1,1),W_embed)
+            
+            if self.cell_type == 'rnn':
+                h, cache_rnn = rnn_step_forward(caption_embed, h, Wx, Wh, b)
+                
+            elif self.cell_type == 'lstm':
+                caption_embed = caption_embed.reshape([N,D])
+                h = h.reshape([N,H])
+                h, cell, cache_lstm = lstm_step_forward(caption_embed, h, cell, Wx, Wh, b)
+                h = h.reshape([N,1,H])
+                
+            score, cache_affined = temporal_affine_forward(h,W_vocab,b_vocab)
+            
+            if i+1 < max_length:
+                captions[:,i+1], _ = np.argmax(score,axis=2)
         pass
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
